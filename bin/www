@@ -1,0 +1,282 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('express-demo:server');
+var http = require('http');
+
+var log = require('consola');
+const path = require('path');
+const os = require('os');
+const localHost = getLocalIps()[0];
+const commonUtils = require('../utils');
+
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
+log.success(' Your application is running here:http://' + localHost + ':' + port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+
+const axios = require('axios')
+const cheerio = require('cheerio')
+const fs = require('fs');
+
+
+// 创建axios实例
+// const service = axios.create({
+//     baseURL: process.env.BASE_API, // api 的 base_url
+//     timeout: 20000 // 请求超时时间
+//   })
+  
+  // request拦截器
+//   service.interceptors.request.use(
+//     config => {
+//       if (store.getters.token) {
+//         config.headers.cookie = '__cfduid=d79de951597bfc71c046ceb79cb78b6891608887954; XSRF-TOKEN=eyJpdiI6InJVRVRaV3U5a2RYQWdNcW1xNUhpXC93PT0iLCJ2YWx1ZSI6IlB4N0xLTnhqcHJDRnZ2TElsOGRQWlBNYTE0RExqUHR0SnJoMWxGMjNocU9IMnJscUc3N3I3bEIwVjFNRVhvUFoiLCJtYWMiOiJhZGIwZTc5MTNhYWEzODQ1NDA1MTNkMTk5NWQzYWVhMWY1YjM5ZGFiZTRmZDkzODNiZGI5MDQ2OWY1OThkY2YzIn0%3D; wallhaven_session=eyJpdiI6ImRhcHRkN1FaNlJFOEtSNTVwYVBNZ0E9PSIsInZhbHVlIjoic3d0Sm53QkxQNWJJQXI0WWo2MVh2TDhqZVRzSjVnYkl1bjFzcTVKaU52b3dacjlaXC8zdDc0bGVNWXo2dnhyMGUiLCJtYWMiOiJkNjA5ZjlmY2FjOGY3ZjcwYzEyODRjM2IwMWRjMzlmOTc5MGJiODI2MTNiYzUyZDkwM2VmN2I2YjgzNzg4MWJmIn0%3D'
+//         config.headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
+//       }
+
+//       return config
+//     },
+//     error => {
+//       // Do something with request error
+//       console.log(error) // for debug
+//       Promise.reject(error)
+//     }
+//   )
+
+
+// axios.get('https://w.wallhaven.cc/full/rd/wallhaven-rd7dlq.jpg').then(res=>{
+//     console.log('111111')
+// }).catch(err=>{
+//     console.log('222')
+// })
+
+// return false
+
+const reptileUrl = 'https://wallhaven.cc/toplist?page='
+const saveDir = 'E:/myExpressDownload/toplist2/'
+let currentPage = 49
+const maxPage = 50
+
+const imgUrlList = []
+
+
+init()
+
+/**
+ * 爬取主程序入口
+ * @param {number}  currentPage   一组数据有多个
+ * @param {number}  maxPage   一组数据有多个
+ * @param {string}  saveDir   一组数据有多个
+ */
+async function init() {
+    log.info('主程序开始启动，请您耐心等待~')
+    log.info(`开始爬取${reptileUrl}的图片`)
+    log.info(`文件将会被保存到以下地址中：${saveDir}`)
+
+    // 判断本地存储文件夹是否存在
+    if (!fs.existsSync(saveDir)) {
+        log.info('目标文件不存在，开始创建新的文件夹~')
+        fs.mkdirSync(saveDir);
+    }
+
+    if (currentPage > maxPage) {
+        log.error('超出最大页数，停止收集源数据，开始爬取图片~')
+        try {
+            const downloadTimer = setInterval(() => {
+                if(!imgUrlList.length){
+                    log.error('没有更多了，收工了~~~~')
+                    clearInterval(downloadTimer)
+                    return false
+                }
+                log.success('开始轮询下载图片~')
+                downloadPicture(imgUrlList.splice(0, 10))
+            }, 10000);
+        } catch (error) {
+            log.error(`downloadPicture fail===>`, error)
+        }
+        
+        // const downloadTimer  = setInterval(() => {
+        //     if(!imgUrlList.length){
+        //         log.error('没有图片了， 终于干完活了， 累死了~~~')
+        //         clearInterval(downloadTimer)
+        //     }
+        //     log.success('开始轮询下载图片咯~')
+        //     downloadPicture(imgUrlList.splice(0, 10))
+        // }, 20000);
+        return false
+    }
+    try {
+        log.info(`开始爬取第${currentPage}页`)
+        const websiteHtml = await axios.get(`${reptileUrl}${currentPage}`)
+        const html = websiteHtml.data
+        const $ = cheerio.load(html);
+        $('.thumb img').each((i, v) => {
+            const smallUrl =  v.attribs['data-src'] ||  v.attribs.src
+            const urlArray = smallUrl.split('/')
+            const fileName = urlArray[urlArray.length-1]
+            const fullUrl = `https://w.wallhaven.cc/full/${fileName.substring(0, 2)}/wallhaven-${fileName}`
+            smallUrl && imgUrlList.push({
+                        smallUrl: smallUrl,
+                        fullUrl: fullUrl,
+                        fileName
+                    })
+            
+        })
+
+        log.error(`imgUrlList==>`, imgUrlList)
+        sleep(init)
+    } catch (error) {
+        log.error(`爬取错误，错误信息如下==>`, error)
+    }
+}
+
+function sleep(callback) {
+    currentPage++
+    const sleepTimeout = commonUtils.getRandomNumber(1, 10)
+    let copyTimeout = sleepTimeout
+    log.info(`爬太多了，有点累了，休息${sleepTimeout}秒，后再继续😄`)
+    const logTimer = setInterval(() => {
+        if (copyTimeout <= 1) {
+            clearInterval(logTimer)
+        }
+        log.success(`倒计时  ${--copyTimeout}   秒后开始继续干活~`)
+    }, 1000);
+    setTimeout(() => {
+        typeof callback === 'function'  &&  callback()
+    }, sleepTimeout * 1000);
+}
+
+async function findPicture(aTagArray) {
+    log.info('开始解析图片内容~')
+    const array = aTagArray.map(v => axios.get(v))
+    return Promise.all(array)
+}
+
+
+function downloadPicture(pictureArray) {
+    log.info('开始发送请求下载图片~')
+    return pictureArray.reduce((accumulator, currentValue, currentIndex, array) => {
+        console.log(currentValue.fullUrl, 'currentValue.fullUrl')
+        const promise = axios.get(currentValue.fullUrl, {
+            responseType: 'stream'
+        }).then(res => {
+            const result = res.data.pipe(fs.createWriteStream(`${saveDir}${currentValue.fileName}`))
+            log.success(`成功保存图片到本地，保存位置==>${saveDir}${currentValue.fileName}`)
+        })
+        accumulator.push(promise)
+        return accumulator
+    }, [])
+}
+
+
+
+
+
+
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+    var port = parseInt(val, 10);
+
+    if (isNaN(port)) {
+        // named pipe
+        return val;
+    }
+
+    if (port >= 0) {
+        // port number
+        return port;
+    }
+
+    return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+    if (error.syscall !== 'listen') {
+        throw error;
+    }
+
+    var bind = typeof port === 'string' ?
+        'Pipe ' + port :
+        'Port ' + port;
+
+    // handle specific listen errors with friendly messages
+    switch (error.code) {
+        case 'EACCES':
+            console.error(bind + ' requires elevated privileges');
+            process.exit(1);
+            break;
+        case 'EADDRINUSE':
+            console.error(bind + ' is already in use');
+            process.exit(1);
+            break;
+        default:
+            throw error;
+    }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+    var addr = server.address();
+    var bind = typeof addr === 'string' ?
+        'pipe ' + addr :
+        'port ' + addr.port;
+    debug('Listening on ' + bind);
+}
+
+/**
+ *获取本地IP
+ *
+ * @param {boolean}  是否显示ipb6
+ * @returns {object} 包含Ip的数组
+ *
+ * console.log('本机ip地址(不包括Ipv6):', getLocalIps());
+ * console.log('本机ip地址(包括Ipv6):', getLocalIps(true));
+ *
+ */
+function getLocalIps(flagIpv6) {
+    var ifaces = os.networkInterfaces();
+    var ips = [];
+    var func = function(details) {
+        if (!flagIpv6 && details.family === 'IPv6') {
+            return;
+        }
+        ips.push(details.address);
+    };
+    for (var dev in ifaces) {
+        ifaces[dev].forEach(func);
+    }
+    return ips;
+}
