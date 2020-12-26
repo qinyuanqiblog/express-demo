@@ -13,6 +13,7 @@ const path = require('path');
 const os = require('os');
 const localHost = getLocalIps()[0];
 const commonUtils = require('../utils');
+const axiosRequest = require('../utils/request');
 
 /**
  * Get port from environment and store in Express.
@@ -37,36 +38,13 @@ server.on('error', onError);
 server.on('listening', onListening);
 
 
-const axios = require('axios')
 const cheerio = require('cheerio')
 const fs = require('fs');
 
 
-// 创建axios实例
-// const service = axios.create({
-//     baseURL: process.env.BASE_API, // api 的 base_url
-//     timeout: 20000 // 请求超时时间
-//   })
-  
-  // request拦截器
-//   service.interceptors.request.use(
-//     config => {
-//       if (store.getters.token) {
-//         config.headers.cookie = '__cfduid=d79de951597bfc71c046ceb79cb78b6891608887954; XSRF-TOKEN=eyJpdiI6InJVRVRaV3U5a2RYQWdNcW1xNUhpXC93PT0iLCJ2YWx1ZSI6IlB4N0xLTnhqcHJDRnZ2TElsOGRQWlBNYTE0RExqUHR0SnJoMWxGMjNocU9IMnJscUc3N3I3bEIwVjFNRVhvUFoiLCJtYWMiOiJhZGIwZTc5MTNhYWEzODQ1NDA1MTNkMTk5NWQzYWVhMWY1YjM5ZGFiZTRmZDkzODNiZGI5MDQ2OWY1OThkY2YzIn0%3D; wallhaven_session=eyJpdiI6ImRhcHRkN1FaNlJFOEtSNTVwYVBNZ0E9PSIsInZhbHVlIjoic3d0Sm53QkxQNWJJQXI0WWo2MVh2TDhqZVRzSjVnYkl1bjFzcTVKaU52b3dacjlaXC8zdDc0bGVNWXo2dnhyMGUiLCJtYWMiOiJkNjA5ZjlmY2FjOGY3ZjcwYzEyODRjM2IwMWRjMzlmOTc5MGJiODI2MTNiYzUyZDkwM2VmN2I2YjgzNzg4MWJmIn0%3D'
-//         config.headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
-//       }
-
-//       return config
-//     },
-//     error => {
-//       // Do something with request error
-//       console.log(error) // for debug
-//       Promise.reject(error)
-//     }
-//   )
 
 
-// axios.get('https://w.wallhaven.cc/full/rd/wallhaven-rd7dlq.jpg').then(res=>{
+// axiosRequest.get('https://w.wallhaven.cc/full/rd/wallhaven-rd7dlq.jpg').then(res=>{
 //     console.log('111111')
 // }).catch(err=>{
 //     console.log('222')
@@ -74,21 +52,31 @@ const fs = require('fs');
 
 // return false
 
-const reptileUrl = 'https://wallhaven.cc/toplist?page='
-const saveDir = 'E:/myExpressDownload/toplist2/'
-let currentPage = 49
-const maxPage = 50
+// const reptileUrl = 'https://wallhaven.cc/toplist?page='
+const reptileUrl = 'https://wallhaven.cc/hot?page='
+// 本地存储路径
+const saveDir = 'E:/myExpressDownload/toplist3/'
+let currentPage = 1
+const maxPage = 18
 
 const imgUrlList = []
 
 
 init()
 
+
+// class  reptile{
+//     constructor(x, y) {
+//       this.x = x;
+//       this.y = y;
+//     }
+  
+//     toString() {
+//       return '(' + this.x + ', ' + this.y + ')';
+//     }
+//   }
 /**
  * 爬取主程序入口
- * @param {number}  currentPage   一组数据有多个
- * @param {number}  maxPage   一组数据有多个
- * @param {string}  saveDir   一组数据有多个
  */
 async function init() {
     log.info('主程序开始启动，请您耐心等待~')
@@ -129,8 +117,8 @@ async function init() {
     }
     try {
         log.info(`开始爬取第${currentPage}页`)
-        const websiteHtml = await axios.get(`${reptileUrl}${currentPage}`)
-        const html = websiteHtml.data
+        const websiteHtml = await axiosRequest.get(`${reptileUrl}${currentPage}`)
+        const html = websiteHtml
         const $ = cheerio.load(html);
         $('.thumb img').each((i, v) => {
             const smallUrl =  v.attribs['data-src'] ||  v.attribs.src
@@ -170,7 +158,7 @@ function sleep(callback) {
 
 async function findPicture(aTagArray) {
     log.info('开始解析图片内容~')
-    const array = aTagArray.map(v => axios.get(v))
+    const array = aTagArray.map(v => axiosRequest.get(v))
     return Promise.all(array)
 }
 
@@ -179,10 +167,10 @@ function downloadPicture(pictureArray) {
     log.info('开始发送请求下载图片~')
     return pictureArray.reduce((accumulator, currentValue, currentIndex, array) => {
         console.log(currentValue.fullUrl, 'currentValue.fullUrl')
-        const promise = axios.get(currentValue.fullUrl, {
+        const promise = axiosRequest.get(currentValue.fullUrl, {
             responseType: 'stream'
         }).then(res => {
-            const result = res.data.pipe(fs.createWriteStream(`${saveDir}${currentValue.fileName}`))
+            const result = res.pipe(fs.createWriteStream(`${saveDir}${currentValue.fileName}`))
             log.success(`成功保存图片到本地，保存位置==>${saveDir}${currentValue.fileName}`)
         })
         accumulator.push(promise)
