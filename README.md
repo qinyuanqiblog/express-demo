@@ -1,6 +1,36 @@
 # express-demo 使用nodejs 爬取喜欢的背景图图
 ## nodejs爬取这些美妞，你值得拥有， 😄😄😄😄😄
-![](https://api2.mubu.com/v3/document_image/5c1c209f-9d79-4c5a-8042-c1b4e15db219-2331693.jpg)
+[![rLd6JS.md.png](https://s3.ax1x.com/2020/12/30/rLd6JS.md.png)](https://imgchr.com/i/rLd6JS)
+
+## 使用方法
+
+```shell
+git clone https://github.com/qinyuanqiblog/express-demo.git
+```
+
+```shell
+npm install
+```
+
+```js
+ // bin/www  文件中修改配置
+new Reptile({
+    // 爬取的网站，目前只支持这个网站，😄
+    reptileUrl: 'https://wallhaven.cc/hot?page=',
+    // 本地保存的路径
+    saveDir: 'E:/myExpressDownload/toplist4/',
+    // 最大页数
+    maxPage: 20,
+})
+```
+
+```shell
+npm start
+```
+
+## 更新记录
+ * 2020-12-26：🎉 初始化项目，支持爬取[wallhaven.cc](https://wallhaven.cc/toplist?page=2)的图图；
+
 ## 思路
 [nodejs 爬取喜欢的的背景图片-思否](https://segmentfault.com/a/1190000038665950)
 

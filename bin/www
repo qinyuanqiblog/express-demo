@@ -8,12 +8,36 @@ var app = require('../app');
 var debug = require('debug')('express-demo:server');
 var http = require('http');
 
-var log = require('consola');
+
+
+class Log {
+    constructor() {
+        this.consoleLog = console.log
+    }
+
+    info(msg){
+        this.consoleLog(chalk.blue(msg))
+    }
+    success(msg){
+        this.consoleLog(chalk.green(msg))
+    }
+    error(msg){
+        this.consoleLog(chalk.red(msg))
+    }
+}
+
+
+var chalk = require('chalk');
+const log = new Log()
 const path = require('path');
 const os = require('os');
 const localHost = getLocalIps()[0];
 const commonUtils = require('../utils');
 const axiosRequest = require('../utils/request');
+
+
+
+
 
 /**
  * Get port from environment and store in Express.
@@ -44,139 +68,122 @@ const fs = require('fs');
 
 
 
-// axiosRequest.get('https://w.wallhaven.cc/full/rd/wallhaven-rd7dlq.jpg').then(res=>{
-//     console.log('111111')
-// }).catch(err=>{
-//     console.log('222')
-// })
+class Reptile {
+    constructor({
+        reptileUrl,
+        saveDir,
+        maxPage = 20,
+    }) {
+        this.reptileUrl = reptileUrl;
+        this.saveDir = saveDir;
+        this.currentPage = 1;
+        this.maxPage = maxPage;
+        this.imgUrlList = []
 
-// return false
-
-// const reptileUrl = 'https://wallhaven.cc/toplist?page='
-const reptileUrl = 'https://wallhaven.cc/hot?page='
-// 本地存储路径
-const saveDir = 'E:/myExpressDownload/toplist3/'
-let currentPage = 1
-const maxPage = 18
-
-const imgUrlList = []
-
-
-init()
-
-
-// class  reptile{
-//     constructor(x, y) {
-//       this.x = x;
-//       this.y = y;
-//     }
-  
-//     toString() {
-//       return '(' + this.x + ', ' + this.y + ')';
-//     }
-//   }
-/**
- * 爬取主程序入口
- */
-async function init() {
-    log.info('主程序开始启动，请您耐心等待~')
-    log.info(`开始爬取${reptileUrl}的图片`)
-    log.info(`文件将会被保存到以下地址中：${saveDir}`)
-
-    // 判断本地存储文件夹是否存在
-    if (!fs.existsSync(saveDir)) {
-        log.info('目标文件不存在，开始创建新的文件夹~')
-        fs.mkdirSync(saveDir);
+        this.initConfig()
+        this.init()
     }
 
-    if (currentPage > maxPage) {
-        log.error('超出最大页数，停止收集源数据，开始爬取图片~')
+    initConfig() {
+        log.info('主程序开始启动，请您耐心等待~')
+        log.info(`开始爬取${this.reptileUrl}的图片`)
+        log.info(`文件将会被保存到以下地址中：${this.saveDir}`)
+        // 判断本地存储文件夹是否存在
+        if (!fs.existsSync(this.saveDir)) {
+            log.info('目标文件不存在，开始创建新的文件夹~')
+            fs.mkdirSync(this.saveDir);
+        }
+    }
+    /**
+     * 爬取主程序入口
+     */
+    async init() {
+        if (this.currentPage > this.maxPage) {
+            log.error('超出最大页数，停止收集源数据，开始爬取图片~')
+            try {
+                const downloadTimer = setInterval(() => {
+                    if (!this.imgUrlList.length) {
+                        log.error('没有更多了，收工了~~~~')
+                        clearInterval(downloadTimer)
+                        return false
+                    }
+                    log.success('开始轮询下载图片~')
+                    this.downloadPicture()
+                }, 10000);
+            } catch (error) {
+                log.error(`downloadPicture fail===>`, error)
+            }
+            return false
+        }
         try {
-            const downloadTimer = setInterval(() => {
-                if(!imgUrlList.length){
-                    log.error('没有更多了，收工了~~~~')
-                    clearInterval(downloadTimer)
-                    return false
-                }
-                log.success('开始轮询下载图片~')
-                downloadPicture(imgUrlList.splice(0, 10))
-            }, 10000);
+            log.info(`开始爬取第${this.currentPage}页`)
+            const websiteHtml = await axiosRequest.get(`${this.reptileUrl}${this.currentPage}`)
+            const $ = cheerio.load(websiteHtml);
+            $('.thumb img').each((i, v) => {
+                const smallUrl = v.attribs['data-src'] || v.attribs.src
+                const urlArray = smallUrl.split('/')
+                const fileName = urlArray[urlArray.length - 1]
+                const fullUrl = `https://w.wallhaven.cc/full/${fileName.substring(0, 2)}/wallhaven-${fileName}`
+                smallUrl && this.imgUrlList.push({
+                    smallUrl: smallUrl,
+                    fullUrl: fullUrl,
+                    fileName
+                })
+
+            })
+            console.log(`this.imgUrlList 个数${this.imgUrlList.length}`)
+            this.sleep()
         } catch (error) {
-            log.error(`downloadPicture fail===>`, error)
+            log.error(`爬取错误，错误信息如下==>`, error)
         }
-        
-        // const downloadTimer  = setInterval(() => {
-        //     if(!imgUrlList.length){
-        //         log.error('没有图片了， 终于干完活了， 累死了~~~')
-        //         clearInterval(downloadTimer)
-        //     }
-        //     log.success('开始轮询下载图片咯~')
-        //     downloadPicture(imgUrlList.splice(0, 10))
-        // }, 20000);
-        return false
     }
-    try {
-        log.info(`开始爬取第${currentPage}页`)
-        const websiteHtml = await axiosRequest.get(`${reptileUrl}${currentPage}`)
-        const html = websiteHtml
-        const $ = cheerio.load(html);
-        $('.thumb img').each((i, v) => {
-            const smallUrl =  v.attribs['data-src'] ||  v.attribs.src
-            const urlArray = smallUrl.split('/')
-            const fileName = urlArray[urlArray.length-1]
-            const fullUrl = `https://w.wallhaven.cc/full/${fileName.substring(0, 2)}/wallhaven-${fileName}`
-            smallUrl && imgUrlList.push({
-                        smallUrl: smallUrl,
-                        fullUrl: fullUrl,
-                        fileName
-                    })
-            
-        })
-
-        log.error(`imgUrlList==>`, imgUrlList)
-        sleep(init)
-    } catch (error) {
-        log.error(`爬取错误，错误信息如下==>`, error)
+    /**
+     * 轮询
+     */
+    sleep() {
+        this.currentPage++
+        const sleepTimeout = commonUtils.getRandomNumber(1, 10)
+        let copyTimeout = sleepTimeout
+        log.info(`爬太多了，有点累了，休息${sleepTimeout}秒，后再继续😄`)
+        const logTimer = setInterval(() => {
+            if (copyTimeout <= 1) {
+                clearInterval(logTimer)
+            }
+            log.success(`倒计时  ${--copyTimeout}   秒后开始继续干活~`)
+        }, 1000);
+        setTimeout(() => {
+            this.init()
+        }, sleepTimeout * 1000);
+    }
+    /**
+     * 下载图片
+     */
+    downloadPicture() {
+        log.info('开始发送请求下载图片~')
+        return this.imgUrlList.splice(0, 10).reduce((accumulator, currentValue, currentIndex, array) => {
+            const promise = axiosRequest.get(currentValue.fullUrl, {
+                responseType: 'stream'
+            }).then(res => {
+                const result = res.pipe(fs.createWriteStream(`${this.saveDir}${currentValue.fileName}`))
+                log.success(`成功保存图片到本地，保存位置==>${this.saveDir}${currentValue.fileName}`)
+            })
+            accumulator.push(promise)
+            return accumulator
+        }, [])
     }
 }
 
-function sleep(callback) {
-    currentPage++
-    const sleepTimeout = commonUtils.getRandomNumber(1, 10)
-    let copyTimeout = sleepTimeout
-    log.info(`爬太多了，有点累了，休息${sleepTimeout}秒，后再继续😄`)
-    const logTimer = setInterval(() => {
-        if (copyTimeout <= 1) {
-            clearInterval(logTimer)
-        }
-        log.success(`倒计时  ${--copyTimeout}   秒后开始继续干活~`)
-    }, 1000);
-    setTimeout(() => {
-        typeof callback === 'function'  &&  callback()
-    }, sleepTimeout * 1000);
-}
-
-async function findPicture(aTagArray) {
-    log.info('开始解析图片内容~')
-    const array = aTagArray.map(v => axiosRequest.get(v))
-    return Promise.all(array)
-}
 
 
-function downloadPicture(pictureArray) {
-    log.info('开始发送请求下载图片~')
-    return pictureArray.reduce((accumulator, currentValue, currentIndex, array) => {
-        console.log(currentValue.fullUrl, 'currentValue.fullUrl')
-        const promise = axiosRequest.get(currentValue.fullUrl, {
-            responseType: 'stream'
-        }).then(res => {
-            const result = res.pipe(fs.createWriteStream(`${saveDir}${currentValue.fileName}`))
-            log.success(`成功保存图片到本地，保存位置==>${saveDir}${currentValue.fileName}`)
-        })
-        accumulator.push(promise)
-        return accumulator
-    }, [])
-}
+
+
+new Reptile({
+    reptileUrl: 'https://wallhaven.cc/hot?page=',
+    saveDir: 'E:/myExpressDownload/toplist4/',
+    maxPage: 20,
+})
+
+
 
 
 
