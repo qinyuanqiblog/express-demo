@@ -10,23 +10,24 @@ var http = require('http');
 
 
 
+// 日志
 class Log {
     constructor() {
         this.consoleLog = console.log
     }
 
-    info(msg){
+    info(msg) {
         this.consoleLog(chalk.blue(msg))
     }
-    success(msg){
+    success(msg) {
         this.consoleLog(chalk.green(msg))
     }
-    error(msg){
+    error(msg) {
         this.consoleLog(chalk.red(msg))
     }
 }
 
-
+// 
 var chalk = require('chalk');
 const log = new Log()
 const path = require('path');
@@ -66,8 +67,7 @@ const cheerio = require('cheerio')
 const fs = require('fs');
 
 
-
-
+// 爬虫入口
 class Reptile {
     constructor({
         reptileUrl,
@@ -79,11 +79,15 @@ class Reptile {
         this.currentPage = 1;
         this.maxPage = maxPage;
         this.imgUrlList = []
+        this.uploadSuccessArray =[ ]
+        this.uploadFailArray =[ ]
 
         this.initConfig()
         this.init()
     }
-
+    /**
+     * 初始化配置
+     */
     initConfig() {
         log.info('主程序开始启动，请您耐心等待~')
         log.info(`开始爬取${this.reptileUrl}的图片`)
@@ -105,6 +109,7 @@ class Reptile {
                     if (!this.imgUrlList.length) {
                         log.error('没有更多了，收工了~~~~')
                         clearInterval(downloadTimer)
+                        this.exportExcelFile()
                         return false
                     }
                     log.success('开始轮询下载图片~')
@@ -124,10 +129,12 @@ class Reptile {
                 const urlArray = smallUrl.split('/')
                 const fileName = urlArray[urlArray.length - 1]
                 const fullUrl = `https://w.wallhaven.cc/full/${fileName.substring(0, 2)}/wallhaven-${fileName}`
+                const fileSize = $('.wall-res').eq(i).html()
                 smallUrl && this.imgUrlList.push({
                     smallUrl: smallUrl,
                     fullUrl: fullUrl,
-                    fileName
+                    fileName,
+                    fileSize,
                 })
 
             })
@@ -164,23 +171,99 @@ class Reptile {
             const promise = axiosRequest.get(currentValue.fullUrl, {
                 responseType: 'stream'
             }).then(res => {
+                this.uploadSuccessArray.push(currentValue)
                 const result = res.pipe(fs.createWriteStream(`${this.saveDir}${currentValue.fileName}`))
                 log.success(`成功保存图片到本地，保存位置==>${this.saveDir}${currentValue.fileName}`)
+            }).catch(err=>{
+                log.error(err)
+                this.uploadFailArray.push(currentValue)
+                log.error(`爬取图片失败 ，图片地址==> ${currentValue.fullUrl}`)
             })
             accumulator.push(promise)
             return accumulator
         }, [])
     }
+    /**
+     *  生成excel 报告
+     */
+    exportExcelFile() {
+        log.info('开始生成excel报告~')
+        // 导出excel
+        const ExcelJS = require('exceljs');
+        const workbook = new ExcelJS.Workbook()
+        const worksheet = workbook.addWorksheet('My Sheet');
+        workbook.creator = 'Me';
+        workbook.lastModifiedBy = 'Her';
+        workbook.created = new Date();
+        workbook.modified = new Date();
+        workbook.lastPrinted = new Date();;
+        
+
+        log.success(`成功保存 ${this.uploadSuccessArray.length} 个`)
+        log.success(`保存失败 ${this.uploadFailArray.length} 个`)
+
+        const excelRows = []
+        this.uploadSuccessArray.forEach(v=>{
+            const {fullUrl,smallUrl,fileName,fileSize } = v || {}
+            const itemArray = [fileName, this.reptileUrl, fileSize, fullUrl, smallUrl, '成功']
+            excelRows.push(itemArray)
+        })
+        this.uploadFailArray.forEach(v=>{
+            const {fullUrl,smallUrl,fileName,fileSize } = v || {}
+            const itemArray = [fileName, this.reptileUrl, fileSize, fullUrl, smallUrl, '失败']
+            excelRows.push(itemArray)
+        })
+
+
+
+        // 将表格添加到工作表
+        worksheet.addTable({
+            name: 'MyTable',
+            ref: 'A1',
+            headerRow: true,
+            // totalsRow: true,
+            style: {
+                theme: 'TableStyleLight1'
+            },
+            columns: [
+                {
+                    name: '文件名',
+                    width: 50,
+                },
+                {
+                    name: '来源',
+                    width: 50,
+                },
+                {
+                    name: '图片大小',
+                    width: 50,
+                },
+                {
+                    name: '大图地址',
+                    width: 50,
+                },
+                {
+                    name: '小图地址',
+                    width: 50,
+                },
+                {
+                    name: '是否成功下载',
+                    width: 50,
+                },
+            ],
+            rows: excelRows,
+        });
+
+        // 写入文件
+        workbook.xlsx.writeFile('66.xlsx');
+        log.success('生成excel报告成功~')
+    }
 }
-
-
-
-
 
 new Reptile({
     reptileUrl: 'https://wallhaven.cc/hot?page=',
     saveDir: 'E:/myExpressDownload/toplist4/',
-    maxPage: 20,
+    maxPage: 3,
 })
 
 

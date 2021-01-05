@@ -22,7 +22,37 @@ function groupBy(array, subGroupLength) {
  return newArray
 }
 
+function differenceBy (a, b, fn)  {
+  const s = new Set(b.map(fn));
+  return a.map(fn).filter(el => !s.has(el));
+};
+
+const uniqueElementsBy = (arr, fn) =>
+  arr.reduce((acc, v) => {
+    if (!acc.some(x => fn(v, x))) acc.push(v);
+    return acc;
+  }, []);
+
+
+  const difference = (a, b) => {
+    const s = new Set(b);
+    return a.filter(x => !s.has(x));
+  };
+  const pullBy = (arr, ...args) => {
+    const length = args.length;
+    let fn = length > 1 ? args[length - 1] : undefined;
+    fn = typeof fn == 'function' ? (args.pop(), fn) : undefined;
+    let argState = (Array.isArray(args[0]) ? args[0] : args).map(val => fn(val));
+    let pulled = arr.filter((v, i) => !argState.includes(fn(v)));
+    arr.length = 0;
+    pulled.forEach(v => arr.push(v));
+  };
+
 module.exports ={ 
  getRandomNumber,
  groupBy,
+ differenceBy,
+ uniqueElementsBy,
+ difference,
+ pullBy,
 }
