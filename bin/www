@@ -15,7 +15,6 @@ class Log {
     constructor() {
         this.consoleLog = console.log
     }
-
     info(msg) {
         this.consoleLog(chalk.blue(msg))
     }
@@ -72,18 +71,30 @@ class Reptile {
     constructor({
         reptileUrl,
         saveDir,
+        excelFileName = '爬虫excel报告',
         maxPage = 20,
     }) {
+        // 爬取的网站
         this.reptileUrl = reptileUrl;
+        // 保存的文件夹
         this.saveDir = saveDir;
+        // excel文件名
+        this.excelFileName = excelFileName;
+        // 当前页数
         this.currentPage = 1;
+        // 最大页数
         this.maxPage = maxPage;
+        // 所有的源数据合集
         this.imgUrlList = []
-        this.uploadSuccessArray =[ ]
-        this.uploadFailArray =[ ]
+        // 下载成功的地址合集
+        this.uploadSuccessArray = []
+        // 下载失败的地址合集
+        this.uploadFailArray = []
 
         this.initConfig()
         this.init()
+
+        // this.connectMysql()
     }
     /**
      * 初始化配置
@@ -110,6 +121,7 @@ class Reptile {
                         log.error('没有更多了，收工了~~~~')
                         clearInterval(downloadTimer)
                         this.exportExcelFile()
+                        this.connectMysql()
                         return false
                     }
                     log.success('开始轮询下载图片~')
@@ -174,7 +186,7 @@ class Reptile {
                 this.uploadSuccessArray.push(currentValue)
                 const result = res.pipe(fs.createWriteStream(`${this.saveDir}${currentValue.fileName}`))
                 log.success(`成功保存图片到本地，保存位置==>${this.saveDir}${currentValue.fileName}`)
-            }).catch(err=>{
+            }).catch(err => {
                 log.error(err)
                 this.uploadFailArray.push(currentValue)
                 log.error(`爬取图片失败 ，图片地址==> ${currentValue.fullUrl}`)
@@ -182,6 +194,59 @@ class Reptile {
             accumulator.push(promise)
             return accumulator
         }, [])
+    }
+    /**
+     *  连接数据库
+     */
+    connectMysql() {
+        var mysql = require('mysql2');
+        var connection = mysql.createConnection({
+            host: 'localhost',
+            user: 'root',
+            password: 'root',
+            database: 'reptile-picture'
+        });
+
+        connection.connect();
+        // 插入单条值
+        // const  addSql = `INSERT INTO picture_info(fileName,fileSize,source,fullUrl,smallUrl, status) VALUES(0,1,2,3,4,5)`;
+        const newArray = []
+        this.uploadSuccessArray.forEach(v => {
+            const {
+                fullUrl,
+                smallUrl,
+                fileName,
+                fileSize
+            } = v || {}
+            const itemArray = [fileName,  fileSize, this.reptileUrl, fullUrl, smallUrl, 1]
+            newArray.push(itemArray)
+        })
+        this.uploadFailArray.forEach(v => {
+            let {
+                fullUrl,
+                smallUrl,
+                fileName,
+                fileSize
+            } = v || {}
+            // 大部分小图是.jpg ， 但是大图是.png 的，就转化一下，不行就算咯
+            fullUrl = fullUrl.replace(/.{1,4}$/, '.png')
+            const itemArray = [fileName,fileSize, this.reptileUrl, fullUrl, smallUrl, 0]
+            newArray.push(itemArray)
+        })
+
+
+        // 插入多条值有重复的不插入，必须设置主键，不然不生效
+        const  addSql = `INSERT IGNORE  INTO picture_info(fileName,fileSize,source,fullUrl,smallUrl,status) VALUES ?`;
+        //增
+        connection.query(addSql, [newArray], function(err, result) {
+            if (err) {
+                log.error(`插入失败 ==>  ,${ err.message }`)
+                return;
+            }
+            log.success('插入成功了:', result);
+        });
+
+        connection.end();
     }
     /**
      *  生成excel 报告
@@ -197,21 +262,31 @@ class Reptile {
         workbook.created = new Date();
         workbook.modified = new Date();
         workbook.lastPrinted = new Date();;
-        
+
 
         log.success(`成功保存 ${this.uploadSuccessArray.length} 个`)
         log.success(`保存失败 ${this.uploadFailArray.length} 个`)
 
-        const excelRows = []
-        this.uploadSuccessArray.forEach(v=>{
-            const {fullUrl,smallUrl,fileName,fileSize } = v || {}
-            const itemArray = [fileName, this.reptileUrl, fileSize, fullUrl, smallUrl, '成功']
-            excelRows.push(itemArray)
+        const newArray = []
+        this.uploadSuccessArray.forEach(v => {
+            const {
+                fullUrl,
+                smallUrl,
+                fileName,
+                fileSize
+            } = v || {}
+            const itemArray = [fileName,  fileSize, this.reptileUrl, fullUrl, smallUrl, '成功']
+            newArray.push(itemArray)
         })
-        this.uploadFailArray.forEach(v=>{
-            const {fullUrl,smallUrl,fileName,fileSize } = v || {}
-            const itemArray = [fileName, this.reptileUrl, fileSize, fullUrl, smallUrl, '失败']
-            excelRows.push(itemArray)
+        this.uploadFailArray.forEach(v => {
+            const {
+                fullUrl,
+                smallUrl,
+                fileName,
+                fileSize
+            } = v || {}
+            const itemArray = [fileName,  fileSize, this.reptileUrl, fullUrl, smallUrl, '失败']
+            newArray.push(itemArray)
         })
 
 
@@ -225,17 +300,16 @@ class Reptile {
             style: {
                 theme: 'TableStyleLight1'
             },
-            columns: [
-                {
+            columns: [{
                     name: '文件名',
                     width: 50,
                 },
                 {
-                    name: '来源',
+                    name: '图片大小',
                     width: 50,
                 },
                 {
-                    name: '图片大小',
+                    name: '来源',
                     width: 50,
                 },
                 {
@@ -251,18 +325,20 @@ class Reptile {
                     width: 50,
                 },
             ],
-            rows: excelRows,
+            rows: newArray,
         });
 
         // 写入文件
-        workbook.xlsx.writeFile('66.xlsx');
+        workbook.xlsx.writeFile(`${this.excelFileName}.xlsx`);
         log.success('生成excel报告成功~')
     }
 }
 
+
+// 调用入口
 new Reptile({
     reptileUrl: 'https://wallhaven.cc/hot?page=',
-    saveDir: 'E:/myExpressDownload/toplist4/',
+    saveDir: 'E:/myExpressDownload/hot/',
     maxPage: 3,
 })
 
