@@ -66,6 +66,7 @@ const cheerio = require('cheerio')
 const fs = require('fs');
 
 
+
 // 爬虫入口
 class Reptile {
     constructor({
@@ -218,7 +219,7 @@ class Reptile {
                 fileName,
                 fileSize
             } = v || {}
-            const itemArray = [fileName,  fileSize, this.reptileUrl, fullUrl, smallUrl, 1]
+            const itemArray = [fileName, fileSize, this.reptileUrl, fullUrl, smallUrl, 1]
             newArray.push(itemArray)
         })
         this.uploadFailArray.forEach(v => {
@@ -230,13 +231,13 @@ class Reptile {
             } = v || {}
             // 大部分小图是.jpg ， 但是大图是.png 的，就转化一下，不行就算咯
             fullUrl = fullUrl.replace(/.{1,4}$/, '.png')
-            const itemArray = [fileName,fileSize, this.reptileUrl, fullUrl, smallUrl, 0]
+            const itemArray = [fileName, fileSize, this.reptileUrl, fullUrl, smallUrl, 0]
             newArray.push(itemArray)
         })
 
 
         // 插入多条值有重复的不插入，必须设置主键，不然不生效
-        const  addSql = `INSERT IGNORE  INTO picture_info(fileName,fileSize,source,fullUrl,smallUrl,status) VALUES ?`;
+        const addSql = `INSERT IGNORE  INTO picture_info(fileName,fileSize,source,fullUrl,smallUrl,status) VALUES ?`;
         //增
         connection.query(addSql, [newArray], function(err, result) {
             if (err) {
@@ -275,7 +276,7 @@ class Reptile {
                 fileName,
                 fileSize
             } = v || {}
-            const itemArray = [fileName,  fileSize, this.reptileUrl, fullUrl, smallUrl, '成功']
+            const itemArray = [fileName, fileSize, this.reptileUrl, fullUrl, smallUrl, '成功']
             newArray.push(itemArray)
         })
         this.uploadFailArray.forEach(v => {
@@ -285,7 +286,7 @@ class Reptile {
                 fileName,
                 fileSize
             } = v || {}
-            const itemArray = [fileName,  fileSize, this.reptileUrl, fullUrl, smallUrl, '失败']
+            const itemArray = [fileName, fileSize, this.reptileUrl, fullUrl, smallUrl, '失败']
             newArray.push(itemArray)
         })
 
@@ -336,13 +337,42 @@ class Reptile {
 
 
 // 调用入口
-new Reptile({
-    reptileUrl: 'https://wallhaven.cc/hot?page=',
-    saveDir: 'E:/myExpressDownload/hot/',
-    maxPage: 3,
-})
+// new Reptile({
+//     reptileUrl: 'https://wallhaven.cc/hot?page=',
+//     saveDir: 'E:/myExpressDownload/hot/',
+//     maxPage: 3,
+// })
+
+// 引入谷歌浏览器
+const puppeteer = require('puppeteer');
+
+class ReptilePuppeteer {
+    constructor() {
+        this.init()
+    }
+
+    init() {
+
+        // 下载pdf
+        (async () => {
+            const browser = await puppeteer.launch();
+            const page = await browser.newPage();
+            const qq = await page.goto('https://news.ycombinator.com', {
+                waitUntil: 'networkidle2'
+            });
+            await page.pdf({
+                path: 'hn.pdf',
+                format: 'A4'
+            });
+
+            await browser.close();
+        })();
 
 
+    }
+}
+
+new ReptilePuppeteer()
 
 
 

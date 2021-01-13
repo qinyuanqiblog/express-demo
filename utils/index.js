@@ -21,12 +21,20 @@ function groupBy(array, subGroupLength) {
  }
  return newArray
 }
-
+/**
+ * 获取指定范围内的随机数
+ * @param {number} start 开始的数
+ * @param {number} end   结束的数
+ */
 function differenceBy (a, b, fn)  {
   const s = new Set(b.map(fn));
   return a.map(fn).filter(el => !s.has(el));
 };
-
+/**
+ * 获取指定范围内的随机数
+ * @param {number} start 开始的数
+ * @param {number} end   结束的数
+ */
 const uniqueElementsBy = (arr, fn) =>
   arr.reduce((acc, v) => {
     if (!acc.some(x => fn(v, x))) acc.push(v);
