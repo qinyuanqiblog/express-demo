@@ -29,8 +29,9 @@ npm start
 ```
 
 ## 更新记录
- * 2020-12-26：🎉🎉 初始化项目，支持爬取[wallhaven.cc](https://wallhaven.cc/toplist?page=2)的图图；例如  https://wallhaven.cc/toplist?page=2 这种链接的
  * 2020-01-14：🎉🎉 支持爬取[wallpaperaccess.com](https://wallpaperaccess.com/search?q=one+piece)的图图,必须是搜索的链接才可以哦。例如： https://wallpaperaccess.com/search?q=one+piece, one+piece 其实是关键词，更改成你需要的关键词就好了
+ * 2020-12-26：🎉🎉 初始化项目，支持爬取[wallhaven.cc](https://wallhaven.cc/toplist?page=2)的图图；例如  https://wallhaven.cc/toplist?page=2 这种链接的
+
 
 ## 思路
 [nodejs 爬取喜欢的的背景图片-思否](https://segmentfault.com/a/1190000038665950)
