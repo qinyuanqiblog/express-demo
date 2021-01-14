@@ -73,6 +73,7 @@ class Reptile {
         saveDir,
         excelFileName = '爬虫excel报告',
         maxPage = 20,
+        handleType = 'paging'
     }) {
         // 爬取的网站
         this.reptileUrl = reptileUrl;
@@ -84,6 +85,8 @@ class Reptile {
         this.currentPage = 1;
         // 最大页数
         this.maxPage = maxPage;
+        // 爬取类型 ，不同网站可能对应不同的爬取方式
+        this.handleType = handleType;
         // 所有的源数据合集
         this.imgUrlList = []
         // 下载成功的地址合集
@@ -93,8 +96,6 @@ class Reptile {
 
         this.initConfig()
         this.init()
-
-        // this.connectMysql()
     }
     /**
      * 初始化配置
@@ -105,7 +106,7 @@ class Reptile {
         log.info(`文件将会被保存到以下地址中：${this.saveDir}`)
         // 判断本地存储文件夹是否存在
         if (!fs.existsSync(this.saveDir)) {
-            log.info('目标文件不存在，开始创建新的文件夹~')
+            log.error('目标文件不存在，开始创建新的文件夹~')
             fs.mkdirSync(this.saveDir);
         }
     }
@@ -113,71 +114,143 @@ class Reptile {
      * 爬取主程序入口
      */
     async init() {
-        if (this.currentPage > this.maxPage) {
-            log.error('超出最大页数，停止收集源数据，开始爬取图片~')
-            try {
-                const downloadTimer = setInterval(() => {
-                    if (!this.imgUrlList.length) {
-                        log.error('没有更多了，收工了~~~~')
-                        clearInterval(downloadTimer)
-                        this.exportExcelFile()
-                        this.connectMysql()
-                        return false
-                    }
-                    log.success('开始轮询下载图片~')
-                    this.downloadPicture()
-                }, 10000);
-            } catch (error) {
-                log.error(`downloadPicture fail===>`, error)
-            }
-            return false
-        }
+        const strategyName = this.reptileUrl.split('/')[2]
         try {
             log.info(`开始爬取第${this.currentPage}页`)
-            const websiteHtml = await axiosRequest.get(`${this.reptileUrl}${this.currentPage}`)
-            const $ = cheerio.load(websiteHtml);
-            $('.thumb img').each((i, v) => {
-                const smallUrl = v.attribs['data-src'] || v.attribs.src
-                const urlArray = smallUrl.split('/')
-                const fileName = urlArray[urlArray.length - 1]
-                const fullUrl = `https://w.wallhaven.cc/full/${fileName.substring(0, 2)}/wallhaven-${fileName}`
-                const fileSize = $('.wall-res').eq(i).html()
-                smallUrl && this.imgUrlList.push({
-                    smallUrl: smallUrl,
-                    fullUrl: fullUrl,
-                    fileName,
-                    fileSize,
-                })
-
-            })
-            console.log(`this.imgUrlList 个数${this.imgUrlList.length}`)
-            this.sleep()
+            const fn = this.initStrategy()[strategyName]
+            if (strategyName && fn && typeof fn === 'function') {
+                fn.apply(this)
+            } else {
+                log.error('init方法异常，没有处理的方式，程序终止咯！！！')
+                return false
+            }
         } catch (error) {
             log.error(`爬取错误，错误信息如下==>`, error)
         }
     }
     /**
-     * 轮询
+     * 初始化的策略模式，不同网站可能不一样的策略，
+     * @return {promise} 返回一个async 的异步函数
+     */
+    initStrategy() {
+        return {
+            // wallhaven 热门的逻辑，这个网站可以在当前页面进行分页，然后收集数据
+            async 'wallhaven.cc'() {
+                const websiteHtml = await axiosRequest.get(`${this.reptileUrl}${this.currentPage}`)
+                const $ = cheerio.load(websiteHtml);
+                $('.thumb img').each((i, v) => {
+                    const smallUrl = v.attribs['data-src'] || v.attribs.src
+                    const urlArray = smallUrl.split('/')
+                    const fileName = urlArray[urlArray.length - 1]
+                    const fullUrl = `https://w.wallhaven.cc/full/${fileName.substring(0, 2)}/wallhaven-${fileName}`
+                    const fileSize = $('.wall-res').eq(i).html()
+                    smallUrl && this.imgUrlList.push({
+                        smallUrl: smallUrl,
+                        fullUrl: fullUrl,
+                        fileName,
+                        fileSize,
+                    })
+                })
+                console.log(`${ this.imgUrlList.length }张图片等待下载中，请稍候`)
+                this.sleep()
+            },
+            // 海贼王乔巴单页的逻辑，这个网站需要做两次操作，先通过关键词查询出相关数据集合，然后进详情，才能得到我们想要的数据
+            async 'wallpaperaccess.com'() {
+                const websiteHtml = await axiosRequest.get(`${this.reptileUrl}`)
+                const $ = cheerio.load(websiteHtml);
+                let menuList = []
+                $('.collection_thumb a').each((i, v) => {
+                    menuList.push(`https://wallpaperaccess.com${v.attribs['href']}`)
+                })
+                log.info(`当前页面共有  ${ menuList.length }  个主题`)
+                menuList.map(v => {
+                    return axiosRequest.get(v).then(res => {
+                        const $_children = cheerio.load(res);
+                        $_children('.thumb').each((i, v) => {
+                            const smallUrl = v.attribs['data-src'] || v.attribs.src
+                            const fileName = smallUrl.split('/')[2]
+                            const fullUrl = `https://wallpaperaccess.com/${smallUrl}`
+                            const fileSize = $_children('.image_cap span').eq(i).html().substring(0, 10)
+                            smallUrl && this.imgUrlList.push({
+                                smallUrl: fullUrl,
+                                fullUrl: fullUrl,
+                                fileName,
+                                fileSize,
+                            })
+                        })
+                        console.log(`${this.imgUrlList.length}  张图片等待下载中`)
+                    })
+                })
+                this.finishHandle()
+            }
+        }
+    }
+
+
+    /**
+     * 爬虫最后的操作，下载图片，生成报告，存储数据
+     */
+    finishHandle() {
+        log.info(this.imgUrlList.length, 'this.imgUrlList')
+        log.error('超出最大页数，停止收集源数据，开始爬取图片~')
+        this.downloadPicture()
+        const downloadTimer = setInterval(() => {
+            if (!this.imgUrlList.length) {
+                clearInterval(downloadTimer)
+                log.error('爬取图片完毕，累死咯，开始存储数据和生成报告~~')
+                this.exportExcelFile()
+                this.connectMysql()
+                return false
+            }
+            log.info(`开始轮询下载图片~, 剩余 ${this.imgUrlList.length} 个未下载`)
+            this.downloadPicture()
+        }, 10000);
+    }
+    /**
+     * 轮询,递归查询地址
      */
     sleep() {
-        this.currentPage++
-        const sleepTimeout = commonUtils.getRandomNumber(1, 10)
-        let copyTimeout = sleepTimeout
-        log.info(`爬太多了，有点累了，休息${sleepTimeout}秒，后再继续😄`)
-        const logTimer = setInterval(() => {
-            if (copyTimeout <= 1) {
+        const handleTypeStrategy = {
+            'paging'() {
+                this.currentPage++
+                if (this.currentPage > this.maxPage) {
+                    this.finishHandle()
+                    return false
+                }
+                const sleepTimeout = commonUtils.getRandomNumber(1, 10)
+                let copyTimeout = sleepTimeout
+                log.info(`爬太多了，有点累了，休息${sleepTimeout}秒，后再继续😄`)
+                let logTimer = null
                 clearInterval(logTimer)
-            }
-            log.success(`倒计时  ${--copyTimeout}   秒后开始继续干活~`)
-        }, 1000);
-        setTimeout(() => {
-            this.init()
-        }, sleepTimeout * 1000);
+                logTimer = setInterval(() => {
+                    if (copyTimeout <= 1) {
+                        clearInterval(logTimer)
+                    }
+                    log.success(`倒计时  ${copyTimeout--}   秒后开始继续干活~`)
+                }, 1000);
+
+                setTimeout(() => {
+                    this.init()
+                }, sleepTimeout * 1000);
+            },
+        }
+
+        const fn = handleTypeStrategy[this.handleType]
+        if (fn && typeof fn === 'function') {
+            fn.apply(this)
+        } else {
+            log.error('sleep方法异常，没有处理的方式，程序终止咯！！！')
+            return false
+        }
     }
     /**
      * 下载图片
+     * @return {promise} 返回下载图片的promise集合
      */
     downloadPicture() {
+        if (!this.imgUrlList.length) {
+            return false
+        }
         log.info('开始发送请求下载图片~')
         return this.imgUrlList.splice(0, 10).reduce((accumulator, currentValue, currentIndex, array) => {
             const promise = axiosRequest.get(currentValue.fullUrl, {
@@ -199,6 +272,7 @@ class Reptile {
      *  连接数据库
      */
     connectMysql() {
+        log.info('开始载入数据库配置~');
         var mysql = require('mysql2');
         var connection = mysql.createConnection({
             host: 'localhost',
@@ -206,7 +280,7 @@ class Reptile {
             password: 'root',
             database: 'reptile-picture'
         });
-
+        log.info('准备关闭数据库连接~')
         connection.connect();
         // 插入单条值
         // const  addSql = `INSERT INTO picture_info(fileName,fileSize,source,fullUrl,smallUrl, status) VALUES(0,1,2,3,4,5)`;
@@ -218,7 +292,7 @@ class Reptile {
                 fileName,
                 fileSize
             } = v || {}
-            const itemArray = [fileName,  fileSize, this.reptileUrl, fullUrl, smallUrl, 1]
+            const itemArray = [fileName, fileSize, this.reptileUrl, fullUrl, smallUrl, 1]
             newArray.push(itemArray)
         })
         this.uploadFailArray.forEach(v => {
@@ -228,24 +302,25 @@ class Reptile {
                 fileName,
                 fileSize
             } = v || {}
-            // 大部分小图是.jpg ， 但是大图是.png 的，就转化一下，不行就算咯
-            fullUrl = fullUrl.replace(/.{1,4}$/, '.png')
-            const itemArray = [fileName,fileSize, this.reptileUrl, fullUrl, smallUrl, 0]
+            // TODO wallhaven.cc 的网站才可以这么高哦 大部分小图是.jpg ， 但是大图是.png 的，就转化一下，不行就算咯
+            // fullUrl = fullUrl.replace(/.{1,4}$/, '.png')
+            const itemArray = [fileName, fileSize, this.reptileUrl, fullUrl, smallUrl, 0]
             newArray.push(itemArray)
         })
 
 
         // 插入多条值有重复的不插入，必须设置主键，不然不生效
-        const  addSql = `INSERT IGNORE  INTO picture_info(fileName,fileSize,source,fullUrl,smallUrl,status) VALUES ?`;
+        const addSql = `INSERT IGNORE  INTO picture_info(fileName,fileSize,source,fullUrl,smallUrl,status) VALUES ?`;
         //增
+        log.info('开始批量插入数据~')
         connection.query(addSql, [newArray], function(err, result) {
             if (err) {
-                log.error(`插入失败 ==>  ,${ err.message }`)
+                log.error(`插入数据库失败 ==>  ,${ err.message }`)
                 return;
             }
-            log.success('插入成功了:', result);
+            log.success('插入数据库成功 ==>   ', result);
         });
-
+        log.info('准备关闭数据库连接~')
         connection.end();
     }
     /**
@@ -275,7 +350,7 @@ class Reptile {
                 fileName,
                 fileSize
             } = v || {}
-            const itemArray = [fileName,  fileSize, this.reptileUrl, fullUrl, smallUrl, '成功']
+            const itemArray = [fileName, fileSize, this.reptileUrl, fullUrl, smallUrl, '成功']
             newArray.push(itemArray)
         })
         this.uploadFailArray.forEach(v => {
@@ -285,7 +360,7 @@ class Reptile {
                 fileName,
                 fileSize
             } = v || {}
-            const itemArray = [fileName,  fileSize, this.reptileUrl, fullUrl, smallUrl, '失败']
+            const itemArray = [fileName, fileSize, this.reptileUrl, fullUrl, smallUrl, '失败']
             newArray.push(itemArray)
         })
 
@@ -335,12 +410,19 @@ class Reptile {
 }
 
 
-// 调用入口
+//调用方式1： wallhaven.cc 网站调用入口
 new Reptile({
     reptileUrl: 'https://wallhaven.cc/hot?page=',
     saveDir: 'E:/myExpressDownload/hot/',
     maxPage: 3,
 })
+
+// 调用方式2： wallpaperaccess.com 网站调用入口
+// new Reptile({
+//     reptileUrl: 'https://wallpaperaccess.com/search?q=one+piece',
+//     saveDir: 'E:/myExpressDownload/one-piece222/',
+//     handleType: 'search'
+// })
 
 
 
